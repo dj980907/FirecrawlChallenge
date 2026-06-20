@@ -3,12 +3,13 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 
 from app.db import SupabaseNotConfiguredError
-from app.models.schemas import CreateExtractorRequest, ExtractorResponse
+from app.models.schemas import CreateExtractorRequest, ExtractorResponse, UpdateExtractorRequest
 from app.repositories.extractors import (
     ExtractorNotFoundError,
     create_extractor,
     get_extractor,
     list_extractors,
+    update_extractor,
 )
 
 router = APIRouter(
@@ -82,6 +83,43 @@ async def get_extractor_endpoint(extractor_id: UUID) -> ExtractorResponse:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to get extractor: {exc}",
+        ) from exc
+
+
+@router.put(
+    "/{extractor_id}",
+    response_model=ExtractorResponse,
+    summary="Update extractor",
+    response_description="The updated extractor record",
+)
+async def update_extractor_endpoint(
+    extractor_id: UUID,
+    body: UpdateExtractorRequest,
+) -> ExtractorResponse:
+    """
+    Partially update a managed extractor.
+
+    Only fields present in the request body are changed. `updated_at` is
+    refreshed automatically by the database trigger.
+
+    Returns `404` if no extractor exists with the given ID.
+    """
+    try:
+        return await update_extractor(str(extractor_id), body)
+    except ExtractorNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except SupabaseNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to update extractor: {exc}",
         ) from exc
 
 

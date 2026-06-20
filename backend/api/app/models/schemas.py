@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.db_models import (
     AgentModel,
@@ -55,6 +55,23 @@ class UpdateExtractorRequest(BaseModel):
     schedule: str | None = None
     status: ExtractorStatus | None = None
     model: AgentModel | None = None
+
+    @model_validator(mode="after")
+    def require_at_least_one_field(self) -> "UpdateExtractorRequest":
+        if all(
+            value is None
+            for value in (
+                self.name,
+                self.urls,
+                self.prompt,
+                self.schema_definition,
+                self.schedule,
+                self.status,
+                self.model,
+            )
+        ):
+            raise ValueError("At least one field must be provided")
+        return self
 
 
 class DriftSignalOut(BaseModel):
