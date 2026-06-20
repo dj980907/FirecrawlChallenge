@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 from app.db import get_supabase_client
 from app.models.db_models import (
@@ -8,6 +9,7 @@ from app.models.db_models import (
     ExtractorStatus,
 )
 from app.models.schemas import CreateExtractorRequest, ExtractorResponse, UpdateExtractorRequest
+from app.repositories.runs import get_run_stats
 
 
 class ExtractorNotFoundError(LookupError):
@@ -16,7 +18,13 @@ class ExtractorNotFoundError(LookupError):
         super().__init__(f"Extractor not found: {extractor_id}")
 
 
-def _row_to_response(row: ExtractorRow) -> ExtractorResponse:
+def _row_to_response(
+    row: ExtractorRow,
+    *,
+    last_run_at: datetime | None = None,
+    run_count: int = 0,
+    success_rate: float = 0.0,
+) -> ExtractorResponse:
     return ExtractorResponse(
         id=row.id,
         name=row.name,
@@ -31,6 +39,9 @@ def _row_to_response(row: ExtractorRow) -> ExtractorResponse:
         consecutive_failures=row.consecutive_failures,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        last_run_at=last_run_at,
+        run_count=run_count,
+        success_rate=success_rate,
     )
 
 
@@ -140,12 +151,29 @@ async def create_extractor(payload: CreateExtractorRequest) -> ExtractorResponse
 
 async def list_extractors() -> list[ExtractorResponse]:
     rows = await asyncio.to_thread(_list_extractors)
-    return [_row_to_response(row) for row in rows]
+    responses: list[ExtractorResponse] = []
+    for row in rows:
+        last_run_at, run_count, success_rate = await get_run_stats(row.id)
+        responses.append(
+            _row_to_response(
+                row,
+                last_run_at=last_run_at,
+                run_count=run_count,
+                success_rate=success_rate,
+            )
+        )
+    return responses
 
 
 async def get_extractor(extractor_id: str) -> ExtractorResponse:
     row = await asyncio.to_thread(_get_extractor, extractor_id)
-    return _row_to_response(row)
+    last_run_at, run_count, success_rate = await get_run_stats(extractor_id)
+    return _row_to_response(
+        row,
+        last_run_at=last_run_at,
+        run_count=run_count,
+        success_rate=success_rate,
+    )
 
 
 async def update_extractor(

@@ -3,7 +3,12 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 
 from app.db import SupabaseNotConfiguredError
-from app.models.schemas import CreateExtractorRequest, ExtractorResponse, UpdateExtractorRequest
+from app.models.schemas import (
+    CreateExtractorRequest,
+    ExtractorResponse,
+    RunResponse,
+    UpdateExtractorRequest,
+)
 from app.repositories.extractors import (
     ExtractorNotFoundError,
     create_extractor,
@@ -12,6 +17,9 @@ from app.repositories.extractors import (
     list_extractors,
     update_extractor,
 )
+from app.repositories.runs import RunNotFoundError, get_run, list_runs
+from app.services.extraction_service import run_extraction
+from app.services.firecrawl_client import FirecrawlNotConfiguredError
 
 router = APIRouter(
     responses={
@@ -22,7 +30,7 @@ router = APIRouter(
             "description": "Supabase request failed",
         },
         status.HTTP_503_SERVICE_UNAVAILABLE: {
-            "description": "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set",
+            "description": "SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or FIRECRAWL_API_KEY not set",
         },
     },
 )
@@ -38,9 +46,8 @@ async def list_extractors_endpoint() -> list[ExtractorResponse]:
     """
     Return every managed extractor stored in Supabase.
 
-    Results are ordered by `created_at` descending. Run stats (`last_run_at`,
-    `run_count`, `success_rate`) are placeholders until extraction runs are
-    implemented.
+    Results are ordered by `created_at` descending. Each extractor includes
+    run stats (`last_run_at`, `run_count`, `success_rate`) when available.
     """
     try:
         return await list_extractors()
@@ -184,4 +191,101 @@ async def create_extractor_endpoint(body: CreateExtractorRequest) -> ExtractorRe
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to create extractor: {exc}",
+        ) from exc
+
+
+@router.post(
+    "/{extractor_id}/run",
+    response_model=RunResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Run extraction",
+    response_description="Extraction run result from Firecrawl agent",
+)
+async def run_extractor_endpoint(extractor_id: UUID) -> RunResponse:
+    """
+    Trigger a Firecrawl agent extraction for this extractor.
+
+    Calls `/agent` with the extractor's URLs, prompt, and schema, then stores
+    the result in `extraction_runs`. No validation or auto-repair yet — raw
+    agent output only.
+
+    Agent jobs can take several minutes. Timeout defaults to 300s
+    (`AGENT_TIMEOUT_SECONDS` env var).
+    """
+    try:
+        return await run_extraction(str(extractor_id))
+    except ExtractorNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except FirecrawlNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except SupabaseNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to run extraction: {exc}",
+        ) from exc
+
+
+@router.get(
+    "/{extractor_id}/runs",
+    response_model=list[RunResponse],
+    summary="List extraction runs",
+    response_description="Run history for an extractor, newest first",
+)
+async def list_runs_endpoint(extractor_id: UUID) -> list[RunResponse]:
+    """Return all extraction runs for an extractor."""
+    try:
+        await get_extractor(str(extractor_id))
+        return await list_runs(str(extractor_id))
+    except ExtractorNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except SupabaseNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to list runs: {exc}",
+        ) from exc
+
+
+@router.get(
+    "/{extractor_id}/runs/{run_id}",
+    response_model=RunResponse,
+    summary="Get extraction run",
+    response_description="A single extraction run by ID",
+)
+async def get_run_endpoint(extractor_id: UUID, run_id: UUID) -> RunResponse:
+    """Return one extraction run for an extractor."""
+    try:
+        return await get_run(str(extractor_id), str(run_id))
+    except RunNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except SupabaseNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to get run: {exc}",
         ) from exc

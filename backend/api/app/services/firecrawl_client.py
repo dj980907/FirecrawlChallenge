@@ -1,15 +1,16 @@
 import os
+from functools import lru_cache
 
-from firecrawl import FirecrawlApp
-
-_client: FirecrawlApp | None = None
+from firecrawl import Firecrawl
 
 
-def get_firecrawl_client() -> FirecrawlApp:
-    global _client
-    if _client is None:
-        api_key = os.getenv("FIRECRAWL_API_KEY")
-        if not api_key:
-            raise RuntimeError("FIRECRAWL_API_KEY is not set")
-        _client = FirecrawlApp(api_key=api_key)
-    return _client
+class FirecrawlNotConfiguredError(RuntimeError):
+    """Raised when FIRECRAWL_API_KEY is not set."""
+
+
+@lru_cache
+def get_firecrawl_client() -> Firecrawl:
+    api_key = os.getenv("FIRECRAWL_API_KEY", "").strip()
+    if not api_key:
+        raise FirecrawlNotConfiguredError("FIRECRAWL_API_KEY is not set")
+    return Firecrawl(api_key=api_key)
