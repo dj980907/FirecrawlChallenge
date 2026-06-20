@@ -1,0 +1,4 @@
+services:
+  api:
+    environment:
+      - FIRECRAWL_API_KEY=fc-your-api-key-here

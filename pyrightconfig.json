@@ -1,0 +1,22 @@
+{
+  "include": ["backend/api"],
+  "exclude": [
+    "**/node_modules",
+    "**/.venv",
+    "frontend",
+    "**/__pycache__",
+    "**/.pytest_cache",
+    "**/.mypy_cache",
+    "**/.ruff_cache"
+  ],
+  "venvPath": "backend/api",
+  "venv": ".venv",
+  "pythonVersion": "3.14",
+  "typeCheckingMode": "basic",
+  "executionEnvironments": [
+    {
+      "root": "backend/api",
+      "extraPaths": ["backend/api"]
+    }
+  ]
+}

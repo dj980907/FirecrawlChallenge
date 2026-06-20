@@ -1,0 +1,96 @@
+services:
+  traefik:
+    image: traefik:v3.6
+    container_name: traefik
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "3"
+    command:
+      - --log.level=INFO
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --providers.docker=true
+      # Only route containers with traefik.enable=true.
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.endpoint=unix:///var/run/docker.sock
+      - --providers.docker.watch=true
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.traefik.entrypoints=web"
+      - "traefik.http.services.traefik.loadbalancer.server.port=8080"
+    networks:
+      - docker_net
+
+  api:
+    container_name: api
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "3"
+    environment:
+      - SERVICE_NAME=api
+      - DEPLOYMENT_TYPE=local
+      - ENVIRONMENT=local
+      - FIRECRAWL_API_KEY={SET IN DOCKER-COMPOSE.OVERRIDE.YAML}
+      - ALLOWED_ORIGINS=http://app.localhost,http://localhost:3000,http://localhost
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.rule=Host(`api.localhost`)"
+      - "traefik.http.routers.api.entrypoints=web"
+      - "traefik.http.services.api.loadbalancer.server.port=80"
+    build:
+      context: .
+      dockerfile: ./backend/api/Dockerfile.local
+    volumes:
+      - "./backend/api/app:/app/app"
+    networks:
+      - docker_net
+
+  frontend:
+    container_name: frontend
+    logging:
+      options:
+        max-size: "50m"
+        max-file: "3"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`localhost`) || Host(`app.localhost`) || HostRegexp(`^(.+\\.)?app\\.localhost$$`)"
+      - "traefik.http.routers.frontend.entrypoints=web"
+      - "traefik.http.routers.frontend.priority=1"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+    environment:
+      # Browser → Traefik; Next.js server (SSR) → Docker service name
+      - API_URL=http://api
+      - NEXT_PUBLIC_API_URL=http://api.localhost
+    ports:
+      - "3000:3000"
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.local
+    volumes:
+      # Only mount source directories, not individual config files
+      # Config files are copied in Dockerfile to avoid file watching issues on macOS
+      - "./frontend/app:/app/app"
+      - "./frontend/components:/app/components"
+      - "./frontend/lib:/app/lib"
+      - "./frontend/public:/app/public"
+      - "./frontend/next.config.js:/app/next.config.js"
+      - "/app/node_modules"
+    networks:
+      - docker_net
+
+networks:
+  docker_net:
+    name: docker_net
+    driver: bridge

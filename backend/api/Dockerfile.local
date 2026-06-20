@@ -1,0 +1,23 @@
+# Development Dockerfile - FastAPI with hot reload
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV POETRY_VIRTUALENVS_CREATE=false \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN pip install --no-cache-dir poetry
+
+COPY backend/api/pyproject.toml backend/api/poetry.lock ./
+RUN poetry install --no-interaction --no-ansi --no-root
+
+# App source is mounted as a volume for hot reload
+COPY backend/api/app ./app
+
+COPY backend/api/start-reload.sh ./start-reload.sh
+RUN chmod +x ./start-reload.sh
+
+EXPOSE 80
+
+CMD ["./start-reload.sh"]
