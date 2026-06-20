@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import SupabaseNotConfiguredError, verify_supabase_connection
-from app.routers import firecrawl, health
+from app.routers import extractors, firecrawl, health
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,7 @@ app.add_middleware(
 
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(firecrawl.router, prefix="/firecrawl", tags=["firecrawl"])
+app.include_router(extractors.router, prefix="/extractors", tags=["extractors"])
 
 
 @app.get("/")
