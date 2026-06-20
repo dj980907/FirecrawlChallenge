@@ -10,6 +10,12 @@ from app.models.db_models import (
 from app.models.schemas import CreateExtractorRequest, ExtractorResponse
 
 
+class ExtractorNotFoundError(LookupError):
+    def __init__(self, extractor_id: str) -> None:
+        self.extractor_id = extractor_id
+        super().__init__(f"Extractor not found: {extractor_id}")
+
+
 def _row_to_response(row: ExtractorRow) -> ExtractorResponse:
     return ExtractorResponse(
         id=row.id,
@@ -65,6 +71,20 @@ def _list_extractors() -> list[ExtractorRow]:
     return [ExtractorRow.model_validate(row) for row in response.data]
 
 
+def _get_extractor(extractor_id: str) -> ExtractorRow:
+    client = get_supabase_client()
+    response = (
+        client.table(TABLE_EXTRACTORS)
+        .select("*")
+        .eq("id", extractor_id)
+        .execute()
+    )
+    rows = response.data
+    if not rows:
+        raise ExtractorNotFoundError(extractor_id)
+    return ExtractorRow.model_validate(rows[0])
+
+
 async def create_extractor(payload: CreateExtractorRequest) -> ExtractorResponse:
     row = await asyncio.to_thread(_insert_extractor, payload)
     return _row_to_response(row)
@@ -73,3 +93,8 @@ async def create_extractor(payload: CreateExtractorRequest) -> ExtractorResponse
 async def list_extractors() -> list[ExtractorResponse]:
     rows = await asyncio.to_thread(_list_extractors)
     return [_row_to_response(row) for row in rows]
+
+
+async def get_extractor(extractor_id: str) -> ExtractorResponse:
+    row = await asyncio.to_thread(_get_extractor, extractor_id)
+    return _row_to_response(row)

@@ -1,11 +1,21 @@
+from uuid import UUID
+
 from fastapi import APIRouter, HTTPException, status
 
 from app.db import SupabaseNotConfiguredError
 from app.models.schemas import CreateExtractorRequest, ExtractorResponse
-from app.repositories.extractors import create_extractor, list_extractors
+from app.repositories.extractors import (
+    ExtractorNotFoundError,
+    create_extractor,
+    get_extractor,
+    list_extractors,
+)
 
 router = APIRouter(
     responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Extractor not found",
+        },
         status.HTTP_502_BAD_GATEWAY: {
             "description": "Supabase request failed",
         },
@@ -41,6 +51,37 @@ async def list_extractors_endpoint() -> list[ExtractorResponse]:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to list extractors: {exc}",
+        ) from exc
+
+
+@router.get(
+    "/{extractor_id}",
+    response_model=ExtractorResponse,
+    summary="Get extractor",
+    response_description="A single extractor by ID",
+)
+async def get_extractor_endpoint(extractor_id: UUID) -> ExtractorResponse:
+    """
+    Return one managed extractor by UUID.
+
+    Returns `404` if no extractor exists with the given ID.
+    """
+    try:
+        return await get_extractor(str(extractor_id))
+    except ExtractorNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except SupabaseNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to get extractor: {exc}",
         ) from exc
 
 
