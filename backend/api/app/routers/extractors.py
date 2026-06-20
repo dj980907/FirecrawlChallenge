@@ -207,8 +207,8 @@ async def run_extractor_endpoint(extractor_id: UUID) -> RunResponse:
 
     Calls `/agent` with the extractor's URLs, prompt, and schema, validates the
     output against `schema_definition`, then stores the result in
-    `extraction_runs`. Auto-repair is not implemented yet — failed validation
-    marks the run as `failed` with `validation_errors` populated.
+    `extraction_runs`. If validation fails, auto-repair runs up to three
+    strategies (prompt refinement, model upgrade, fresh scrape).
 
     Agent jobs can take several minutes. Timeout defaults to 300s
     (`AGENT_TIMEOUT_SECONDS` env var).

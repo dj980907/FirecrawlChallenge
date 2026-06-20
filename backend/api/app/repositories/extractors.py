@@ -4,6 +4,7 @@ from datetime import datetime
 from app.db import get_supabase_client
 from app.models.db_models import (
     TABLE_EXTRACTORS,
+    AgentModel,
     ExtractorHealth,
     ExtractorRow,
     ExtractorStatus,
@@ -186,3 +187,42 @@ async def update_extractor(
 
 async def delete_extractor(extractor_id: str) -> None:
     await asyncio.to_thread(_delete_extractor, extractor_id)
+
+
+def _record_run_outcome(extractor_id: str, *, succeeded: bool) -> None:
+    extractor = _get_extractor(extractor_id)
+    if succeeded:
+        updates = {
+            "consecutive_failures": 0,
+            "health": ExtractorHealth.HEALTHY.value,
+        }
+    else:
+        failures = extractor.consecutive_failures + 1
+        if failures >= 3:
+            health = ExtractorHealth.CRITICAL
+        elif failures >= 1:
+            health = ExtractorHealth.WARNING
+        else:
+            health = ExtractorHealth.HEALTHY
+        updates = {
+            "consecutive_failures": failures,
+            "health": health.value,
+        }
+
+    client = get_supabase_client()
+    client.table(TABLE_EXTRACTORS).update(updates).eq("id", extractor_id).execute()
+
+
+def _update_model_preference(extractor_id: str, model: AgentModel) -> None:
+    client = get_supabase_client()
+    client.table(TABLE_EXTRACTORS).update(
+        {"model_preference": model.value}
+    ).eq("id", extractor_id).execute()
+
+
+async def record_run_outcome(extractor_id: str, *, succeeded: bool) -> None:
+    await asyncio.to_thread(_record_run_outcome, extractor_id, succeeded=succeeded)
+
+
+async def update_model_preference(extractor_id: str, model: AgentModel) -> None:
+    await asyncio.to_thread(_update_model_preference, extractor_id, model)

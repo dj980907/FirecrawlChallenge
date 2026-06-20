@@ -16,6 +16,16 @@ NOW = datetime(2026, 6, 20, 12, 0, 0, tzinfo=timezone.utc)
 EXTRACTOR_ID = "c37647d7-8c5c-4790-8231-e9ac0fe17347"
 RUN_ID = "ca11fc6b-3e1d-470d-af5e-ae3141f10693"
 
+VALID_SHOES_DATA = {
+    "shoes": [
+        {
+            "name": "Air Jordan 5",
+            "category": "Men's Shoes",
+            "price": 220,
+        }
+    ]
+}
+
 
 @pytest.fixture
 def shoes_schema() -> dict:

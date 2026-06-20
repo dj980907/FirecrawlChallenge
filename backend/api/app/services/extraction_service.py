@@ -1,54 +1,15 @@
 import asyncio
-import os
 import time
 from datetime import datetime, timezone
-from typing import Any
 
-from app.models.db_models import ExtractorRow, RunStatus, RunTrigger
+from app.models.db_models import AgentModel, RunStatus, RunTrigger
 from app.models.schemas import RunResponse
-from app.repositories.extractors import _get_extractor
+from app.repositories.extractors import _get_extractor, record_run_outcome, update_model_preference
 from app.repositories.runs import create_run, finalize_run
-from app.services.firecrawl_client import (
-    FirecrawlNotConfiguredError,
-    get_firecrawl_client,
-)
+from app.services.agent_runner import run_agent
+from app.services.firecrawl_client import FirecrawlNotConfiguredError
+from app.services.repair_engine import attempt_repair
 from app.services.schema_validator import validate_extraction
-
-
-def _normalize_agent_data(data: Any) -> dict[str, Any] | None:
-    if data is None:
-        return None
-    if isinstance(data, dict):
-        return data
-    if hasattr(data, "model_dump"):
-        return data.model_dump()
-    return {"value": data}
-
-
-def _run_agent(
-    extractor: ExtractorRow,
-) -> tuple[RunStatus, dict[str, Any] | None, int, str | None]:
-    client = get_firecrawl_client()
-    timeout = int(os.getenv("AGENT_TIMEOUT_SECONDS", "300"))
-
-    response = client.agent(
-        urls=extractor.urls,
-        prompt=extractor.prompt,
-        schema=extractor.schema_definition,
-        model=extractor.model_preference.value,
-        timeout=timeout,
-        # i don't really want this to be extreme lol
-        max_credits=20,
-    )
-
-    credits_used = response.credits_used or 0
-    data = _normalize_agent_data(response.data)
-
-    if response.status == "completed" and data is not None:
-        return RunStatus.COMPLETED, data, credits_used, None
-
-    error = response.error or f"Agent finished with status: {response.status}"
-    return RunStatus.FAILED, data, credits_used, error
 
 
 async def run_extraction(
@@ -60,9 +21,12 @@ async def run_extraction(
     run = await create_run(extractor_id, trigger)
     started = time.monotonic()
 
+    repair_attempts = []
+    was_repaired = False
+
     try:
         status, data, credits_used, error = await asyncio.to_thread(
-            _run_agent, extractor
+            run_agent, extractor
         )
     except FirecrawlNotConfiguredError:
         raise
@@ -76,16 +40,49 @@ async def run_extraction(
     if status == RunStatus.COMPLETED:
         validation_errors = validate_extraction(data, extractor.schema_definition)
         if validation_errors:
-            status = RunStatus.FAILED
-            if len(validation_errors) == 1:
-                error = f"Schema validation failed: {validation_errors[0]}"
-            else:
-                error = (
-                    f"Schema validation failed with {len(validation_errors)} errors"
+            try:
+                repair_result = await attempt_repair(
+                    extractor,
+                    run.id,
+                    validation_errors,
+                    data,
                 )
+            except FirecrawlNotConfiguredError:
+                raise
+
+            repair_attempts = repair_result.repair_attempts
+            credits_used += repair_result.credits_used
+
+            if repair_result.succeeded and repair_result.data is not None:
+                status = RunStatus.REPAIRED
+                data = repair_result.data
+                validation_errors = []
+                was_repaired = True
+                error = None
+                if repair_result.model_upgraded:
+                    await update_model_preference(
+                        extractor_id,
+                        AgentModel.SPARK_1_PRO,
+                    )
+            else:
+                status = RunStatus.FAILED
+                validation_errors = repair_result.validation_errors
+                if len(validation_errors) == 1:
+                    error = (
+                        "Schema validation failed and auto-repair exhausted: "
+                        f"{validation_errors[0]}"
+                    )
+                else:
+                    error = (
+                        "Schema validation failed and auto-repair exhausted "
+                        f"({len(validation_errors)} errors)"
+                    )
 
     duration_ms = int((time.monotonic() - started) * 1000)
     completed_at = datetime.now(timezone.utc)
+
+    run_succeeded = status in (RunStatus.COMPLETED, RunStatus.REPAIRED)
+    await record_run_outcome(extractor_id, succeeded=run_succeeded)
 
     updated = await finalize_run(
         run.id,
@@ -95,6 +92,7 @@ async def run_extraction(
             "duration_ms": duration_ms,
             "data": data,
             "validation_errors": validation_errors,
+            "was_repaired": was_repaired,
             "credits_used": credits_used,
             "error": error,
         },
@@ -110,6 +108,8 @@ async def run_extraction(
         duration_ms=updated.duration_ms,
         data=updated.data,
         validation_errors=updated.validation_errors,
+        drift_signals=[],
+        repair_attempts=repair_attempts,
         was_repaired=updated.was_repaired,
         credits_used=updated.credits_used,
         error=updated.error,

@@ -9,7 +9,8 @@ from app.models.db_models import (
     RunStatus,
     RunTrigger,
 )
-from app.models.schemas import RunResponse
+from app.models.schemas import RepairAttemptOut, RunResponse
+from app.repositories.repair_attempts import list_repair_attempts, repair_attempt_to_out
 
 
 class RunNotFoundError(LookupError):
@@ -19,7 +20,10 @@ class RunNotFoundError(LookupError):
         super().__init__(f"Run not found: {run_id} (extractor {extractor_id})")
 
 
-def _row_to_response(row: ExtractionRunRow) -> RunResponse:
+def _row_to_response(
+    row: ExtractionRunRow,
+    repair_attempts: list[RepairAttemptOut] | None = None,
+) -> RunResponse:
     return RunResponse(
         id=row.id,
         extractor_id=row.extractor_id,
@@ -30,6 +34,8 @@ def _row_to_response(row: ExtractionRunRow) -> RunResponse:
         duration_ms=row.duration_ms,
         data=row.data,
         validation_errors=row.validation_errors,
+        drift_signals=[],
+        repair_attempts=repair_attempts or [],
         was_repaired=row.was_repaired,
         credits_used=row.credits_used,
         error=row.error,
@@ -124,12 +130,25 @@ async def finalize_run(run_id: str, updates: dict[str, Any]) -> ExtractionRunRow
 
 async def get_run(extractor_id: str, run_id: str) -> RunResponse:
     row = await asyncio.to_thread(_get_run, extractor_id, run_id)
-    return _row_to_response(row)
+    attempts = await list_repair_attempts(run_id)
+    return _row_to_response(
+        row,
+        repair_attempts=[repair_attempt_to_out(a) for a in attempts],
+    )
 
 
 async def list_runs(extractor_id: str) -> list[RunResponse]:
     rows = await asyncio.to_thread(_list_runs, extractor_id)
-    return [_row_to_response(row) for row in rows]
+    responses: list[RunResponse] = []
+    for row in rows:
+        attempts = await list_repair_attempts(row.id)
+        responses.append(
+            _row_to_response(
+                row,
+                repair_attempts=[repair_attempt_to_out(a) for a in attempts],
+            )
+        )
+    return responses
 
 
 async def get_run_stats(
