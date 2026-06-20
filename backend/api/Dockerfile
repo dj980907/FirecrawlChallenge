@@ -9,10 +9,10 @@ ENV POETRY_VIRTUALENVS_CREATE=false \
 
 RUN pip install --no-cache-dir poetry
 
-COPY backend/api/pyproject.toml backend/api/poetry.lock ./
+COPY pyproject.toml poetry.lock ./
 RUN poetry install --no-interaction --no-ansi --no-root --only main
 
-COPY backend/api/app ./app
+COPY app ./app
 
 EXPOSE 80
 
