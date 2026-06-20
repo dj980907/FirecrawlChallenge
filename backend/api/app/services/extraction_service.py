@@ -12,6 +12,7 @@ from app.services.firecrawl_client import (
     FirecrawlNotConfiguredError,
     get_firecrawl_client,
 )
+from app.services.schema_validator import validate_extraction
 
 
 def _normalize_agent_data(data: Any) -> dict[str, Any] | None:
@@ -71,6 +72,18 @@ async def run_extraction(
         credits_used = 0
         error = str(exc)
 
+    validation_errors: list[str] = []
+    if status == RunStatus.COMPLETED:
+        validation_errors = validate_extraction(data, extractor.schema_definition)
+        if validation_errors:
+            status = RunStatus.FAILED
+            if len(validation_errors) == 1:
+                error = f"Schema validation failed: {validation_errors[0]}"
+            else:
+                error = (
+                    f"Schema validation failed with {len(validation_errors)} errors"
+                )
+
     duration_ms = int((time.monotonic() - started) * 1000)
     completed_at = datetime.now(timezone.utc)
 
@@ -81,6 +94,7 @@ async def run_extraction(
             "completed_at": completed_at.isoformat(),
             "duration_ms": duration_ms,
             "data": data,
+            "validation_errors": validation_errors,
             "credits_used": credits_used,
             "error": error,
         },
