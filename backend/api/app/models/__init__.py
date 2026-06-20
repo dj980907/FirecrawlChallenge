@@ -1,17 +1,27 @@
 from app.models.schemas import (
-    DebugRunRequest,
+    CodeDebugRunRequest,
+    CodeDebugStep,
     DebugRunResponse,
     DebugRunStatus,
     DebugStep,
+    MixedDebugRunRequest,
+    MixedDebugStep,
+    PromptDebugRunRequest,
+    PromptDebugStep,
     StepResult,
     StepStatus,
 )
 
 __all__ = [
-    "DebugRunRequest",
+    "CodeDebugRunRequest",
+    "CodeDebugStep",
     "DebugRunResponse",
     "DebugRunStatus",
     "DebugStep",
+    "MixedDebugRunRequest",
+    "MixedDebugStep",
+    "PromptDebugRunRequest",
+    "PromptDebugStep",
     "StepResult",
     "StepStatus",
 ]

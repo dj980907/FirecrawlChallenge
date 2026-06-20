@@ -17,25 +17,11 @@ class DebugRunStatus(StrEnum):
 
 
 class DebugStep(BaseModel):
-    """One /interact call — either a natural-language prompt or executable code."""
+    """Internal step model — exactly one of prompt or code."""
 
-    prompt: str | None = Field(
-        default=None,
-        min_length=1,
-        description="Plain-English instruction for /interact prompt mode",
-        examples=["Click the login button"],
-    )
-    code: str | None = Field(
-        default=None,
-        min_length=1,
-        description="Playwright or bash code for /interact code mode",
-        examples=["await page.click('#login'); true"],
-    )
-    language: str | None = Field(
-        default=None,
-        description="Code language: node (default), python, or bash",
-        examples=["bash"],
-    )
+    prompt: str | None = None
+    code: str | None = None
+    language: str | None = None
 
     @model_validator(mode="after")
     def require_prompt_or_code(self) -> "DebugStep":
@@ -54,11 +40,66 @@ class DebugStep(BaseModel):
         return first_line if len(first_line) <= 120 else f"{first_line[:117]}..."
 
 
-class DebugRunRequest(BaseModel):
-    url: HttpUrl = Field(description="Page URL to open before running steps")
-    steps: list[DebugStep] = Field(
+class CodeDebugStep(BaseModel):
+    code: str = Field(
         min_length=1,
-        description="Ordered /interact steps (prompt or code each)",
+        description="Playwright or bash code for /interact code mode",
+        examples=["await page.click('#login'); true"],
+    )
+    language: str | None = Field(
+        default=None,
+        description="Code language: node (default), python, or bash",
+        examples=["bash"],
+    )
+
+    def to_debug_step(self) -> DebugStep:
+        return DebugStep(code=self.code, language=self.language)
+
+
+class PromptDebugStep(BaseModel):
+    prompt: str = Field(
+        min_length=1,
+        description="Plain-English instruction for /interact prompt mode",
+        examples=["Click the login button"],
+    )
+
+    def to_debug_step(self) -> DebugStep:
+        return DebugStep(prompt=self.prompt)
+
+
+class MixedDebugStep(BaseModel):
+    """One /interact call — either prompt or code."""
+
+    prompt: str | None = Field(default=None, min_length=1)
+    code: str | None = Field(default=None, min_length=1)
+    language: str | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def require_prompt_or_code(self) -> "MixedDebugStep":
+        has_prompt = bool(self.prompt and self.prompt.strip())
+        has_code = bool(self.code and self.code.strip())
+        if has_prompt == has_code:
+            raise ValueError("Provide exactly one of 'prompt' or 'code'")
+        return self
+
+    def to_debug_step(self) -> DebugStep:
+        return DebugStep(prompt=self.prompt, code=self.code, language=self.language)
+
+
+class CodeDebugRunRequest(BaseModel):
+    url: HttpUrl = Field(description="Page URL to open before running steps")
+    steps: list[CodeDebugStep] = Field(min_length=1)
+
+
+class PromptDebugRunRequest(BaseModel):
+    url: HttpUrl = Field(description="Page URL to open before running steps")
+    steps: list[PromptDebugStep] = Field(min_length=1)
+
+
+class MixedDebugRunRequest(BaseModel):
+    url: HttpUrl = Field(description="Page URL to open before running steps")
+    steps: list[MixedDebugStep] = Field(
+        min_length=1,
         examples=[
             [
                 {"prompt": "Wait for the page to finish loading"},

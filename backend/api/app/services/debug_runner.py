@@ -41,7 +41,11 @@ def _extract_scrape_id(scrape_result: Any) -> str:
     if scrape_id:
         return str(scrape_id)
 
-    payload = scrape_result.model_dump() if hasattr(scrape_result, "model_dump") else scrape_result
+    payload = (
+        scrape_result.model_dump()
+        if hasattr(scrape_result, "model_dump")
+        else scrape_result
+    )
     if isinstance(payload, dict):
         meta = payload.get("metadata") or {}
         if isinstance(meta, dict):
@@ -58,7 +62,9 @@ def _interact_response_ok(response: Any) -> tuple[bool, str | None]:
         stderr = _get_attr(response, "stderr", default="") or ""
         error = _get_attr(response, "error")
         exit_code = _get_attr(response, "exit_code", "exitCode")
-        parts = [part for part in (error, stderr.strip(), f"exit_code={exit_code}") if part]
+        parts = [
+            part for part in (error, stderr.strip(), f"exit_code={exit_code}") if part
+        ]
         return False, " | ".join(str(part) for part in parts) or "Interact call failed"
 
     killed = _get_attr(response, "killed")
@@ -237,5 +243,7 @@ def run_debug_sequence(url: str, steps: list[DebugStep]) -> DebugRunResponse:
     )
 
 
-async def run_debug_sequence_async(url: str, steps: list[DebugStep]) -> DebugRunResponse:
+async def run_debug_sequence_async(
+    url: str, steps: list[DebugStep]
+) -> DebugRunResponse:
     return await asyncio.to_thread(run_debug_sequence, url, steps)
