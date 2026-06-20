@@ -1,151 +1,107 @@
-"""Pydantic schemas for API request/response bodies."""
+"""Pydantic schemas for the Action Debug Runner API."""
 
-from datetime import datetime
-from typing import Any
+from enum import StrEnum
 
-from pydantic import BaseModel, Field, model_validator
-
-from app.models.db_models import (
-    AgentModel,
-    DriftSeverity,
-    DriftSignalType,
-    ExtractorHealth,
-    ExtractorStatus,
-    RepairStrategy,
-    RunStatus,
-    RunTrigger,
-)
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 
-class CreateExtractorRequest(BaseModel):
-    name: str = Field(
-        min_length=1,
-        max_length=200,
-        description="Human-readable name for this extractor",
-        examples=["Product Prices"],
-    )
-    urls: list[str] = Field(
-        min_length=1,
-        description="URLs to extract data from",
-        examples=[["https://example.com/product"]],
-    )
-    prompt: str = Field(
-        min_length=1,
-        description="Natural-language instructions for what data to extract",
-        examples=["Extract the product name, price, currency, and availability status"],
-    )
-    schema_definition: dict[str, Any] = Field(
-        description="JSON Schema describing the expected structured output",
-    )
-    schedule: str | None = Field(
+class StepStatus(StrEnum):
+    PASSED = "passed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class DebugRunStatus(StrEnum):
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class DebugStep(BaseModel):
+    """One /interact call — either a natural-language prompt or executable code."""
+
+    prompt: str | None = Field(
         default=None,
-        description='Optional schedule for future monitor/cron (e.g. "every 6 hours")',
+        min_length=1,
+        description="Plain-English instruction for /interact prompt mode",
+        examples=["Click the login button"],
     )
-    model: AgentModel = Field(
-        default=AgentModel.SPARK_1_MINI,
-        description="Firecrawl agent model tier to use for extractions",
+    code: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Playwright or bash code for /interact code mode",
+        examples=["await page.click('#login'); true"],
     )
-
-
-class UpdateExtractorRequest(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=200)
-    urls: list[str] | None = Field(default=None, min_length=1)
-    prompt: str | None = Field(default=None, min_length=1)
-    schema_definition: dict[str, Any] | None = None
-    schedule: str | None = None
-    status: ExtractorStatus | None = None
-    model: AgentModel | None = None
+    language: str | None = Field(
+        default=None,
+        description="Code language: node (default), python, or bash",
+        examples=["bash"],
+    )
 
     @model_validator(mode="after")
-    def require_at_least_one_field(self) -> "UpdateExtractorRequest":
-        if all(
-            value is None
-            for value in (
-                self.name,
-                self.urls,
-                self.prompt,
-                self.schema_definition,
-                self.schedule,
-                self.status,
-                self.model,
-            )
-        ):
-            raise ValueError("At least one field must be provided")
+    def require_prompt_or_code(self) -> "DebugStep":
+        has_prompt = bool(self.prompt and self.prompt.strip())
+        has_code = bool(self.code and self.code.strip())
+        if has_prompt == has_code:
+            raise ValueError("Provide exactly one of 'prompt' or 'code'")
         return self
 
-
-class DriftSignalOut(BaseModel):
-    id: str
-    run_id: str
-    field: str
-    signal_type: DriftSignalType
-    expected: str
-    actual: str
-    severity: DriftSeverity
+    def action_label(self) -> str:
+        if self.prompt:
+            text = self.prompt.strip()
+            return text if len(text) <= 120 else f"{text[:117]}..."
+        assert self.code is not None
+        first_line = self.code.strip().splitlines()[0]
+        return first_line if len(first_line) <= 120 else f"{first_line[:117]}..."
 
 
-class RepairAttemptOut(BaseModel):
-    id: str
-    run_id: str
-    strategy: RepairStrategy
-    succeeded: bool
-    prompt_used: str | None = None
-    model_used: str | None = None
-    data: dict[str, Any] | None = None
-    error: str | None = None
+class DebugRunRequest(BaseModel):
+    url: HttpUrl = Field(description="Page URL to open before running steps")
+    steps: list[DebugStep] = Field(
+        min_length=1,
+        description="Ordered /interact steps (prompt or code each)",
+        examples=[
+            [
+                {"prompt": "Wait for the page to finish loading"},
+                {"code": "await page.click('#login'); true"},
+            ]
+        ],
+    )
+
+
+class StepResult(BaseModel):
+    index: int = Field(description="1-based step index")
+    action: str = Field(description="Prompt or code sent for this step")
+    status: StepStatus
     duration_ms: int
-    credits_used: int
-
-
-class ExtractorResponse(BaseModel):
-    id: str = Field(description="UUID primary key")
-    name: str
-    urls: list[str]
-    prompt: str
-    schema_definition: dict[str, Any]
-    schedule: str | None = None
-    monitor_id: str | None = Field(
-        default=None,
-        description="Linked Firecrawl monitor ID (set when monitor integration is added)",
-    )
-    status: ExtractorStatus = Field(description="Operational status")
-    health: ExtractorHealth = Field(description="Health based on recent run quality")
-    model_preference: AgentModel
-    consecutive_failures: int = Field(description="Consecutive failed runs")
-    created_at: datetime
-    updated_at: datetime
-    last_run_at: datetime | None = Field(
-        default=None,
-        description="Timestamp of the most recent extraction run",
-    )
-    run_count: int = Field(default=0, description="Total extraction runs")
-    success_rate: float = Field(default=0.0, description="Fraction of successful runs (0–1)")
-
-
-class RunResponse(BaseModel):
-    id: str
-    extractor_id: str
-    status: RunStatus
-    trigger: RunTrigger
-    started_at: datetime
-    completed_at: datetime | None = None
-    duration_ms: int | None = None
-    data: dict[str, Any] | None = None
-    validation_errors: list[str] = Field(default_factory=list)
-    drift_signals: list[DriftSignalOut] = Field(default_factory=list)
-    repair_attempts: list[RepairAttemptOut] = Field(default_factory=list)
-    was_repaired: bool = False
-    credits_used: int = 0
     error: str | None = None
+    output: str | None = Field(
+        default=None,
+        description="/interact output field when present",
+    )
+    live_view_url: str | None = Field(
+        default=None,
+        description="Read-only live browser stream URL from /interact",
+    )
+    screenshot_base64: str | None = Field(
+        default=None,
+        description="Page screenshot at failure time (base64 PNG)",
+    )
 
 
-class FleetHealthResponse(BaseModel):
-    total_extractors: int
-    healthy: int
-    warning: int
-    critical: int
-    runs_today: int = 0
-    repairs_today: int = 0
-    failures_today: int = 0
-    credits_used_today: int = 0
-    extractors_needing_attention: list[str] = Field(default_factory=list)
+class DebugRunResponse(BaseModel):
+    status: DebugRunStatus
+    failed_at_step: int | None = Field(
+        default=None,
+        description="1-based index of the first failed step, if any",
+    )
+    total_steps: int
+    total_duration_ms: int
+    steps: list[StepResult]
+    page_content: str | None = Field(
+        default=None,
+        description="Final page text when all steps pass",
+    )
+    scrape_id: str | None = Field(
+        default=None,
+        description="Firecrawl scrape session ID used for this run",
+    )
