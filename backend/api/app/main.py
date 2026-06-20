@@ -1,14 +1,43 @@
+import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.db import SupabaseNotConfiguredError, verify_supabase_connection
 from app.routers import firecrawl, health
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_ROLE_KEY"):
+        try:
+            await verify_supabase_connection()
+            logger.info("Supabase connection verified")
+        except SupabaseNotConfiguredError:
+            logger.warning("Supabase env vars incomplete; database features disabled")
+        except Exception:
+            logger.exception(
+                "Supabase connection failed. Run supabase/migrations/001_initial_schema.sql "
+                "in your Supabase project if tables do not exist yet."
+            )
+            raise
+    else:
+        logger.warning(
+            "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set; database features disabled"
+        )
+
+    yield
+
 
 app = FastAPI(
     title="Firecrawl Challenge API",
     description="Backend API for the Firecrawl 72-hour challenge",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
