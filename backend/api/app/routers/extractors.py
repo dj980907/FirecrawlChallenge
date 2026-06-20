@@ -7,6 +7,7 @@ from app.models.schemas import CreateExtractorRequest, ExtractorResponse, Update
 from app.repositories.extractors import (
     ExtractorNotFoundError,
     create_extractor,
+    delete_extractor,
     get_extractor,
     list_extractors,
     update_extractor,
@@ -120,6 +121,37 @@ async def update_extractor_endpoint(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Failed to update extractor: {exc}",
+        ) from exc
+
+
+@router.delete(
+    "/{extractor_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete extractor",
+    response_description="Extractor deleted",
+)
+async def delete_extractor_endpoint(extractor_id: UUID) -> None:
+    """
+    Delete a managed extractor and its related runs (cascade).
+
+    Returns `404` if no extractor exists with the given ID.
+    """
+    try:
+        await delete_extractor(str(extractor_id))
+    except ExtractorNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except SupabaseNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to delete extractor: {exc}",
         ) from exc
 
 

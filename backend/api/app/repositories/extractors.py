@@ -120,6 +120,19 @@ def _update_extractor(extractor_id: str, payload: UpdateExtractorRequest) -> Ext
     return ExtractorRow.model_validate(rows[0])
 
 
+def _delete_extractor(extractor_id: str) -> None:
+    client = get_supabase_client()
+    response = (
+        client.table(TABLE_EXTRACTORS)
+        .delete()
+        .eq("id", extractor_id)
+        .select("*")
+        .execute()
+    )
+    if not response.data:
+        raise ExtractorNotFoundError(extractor_id)
+
+
 async def create_extractor(payload: CreateExtractorRequest) -> ExtractorResponse:
     row = await asyncio.to_thread(_insert_extractor, payload)
     return _row_to_response(row)
@@ -141,3 +154,7 @@ async def update_extractor(
 ) -> ExtractorResponse:
     row = await asyncio.to_thread(_update_extractor, extractor_id, payload)
     return _row_to_response(row)
+
+
+async def delete_extractor(extractor_id: str) -> None:
+    await asyncio.to_thread(_delete_extractor, extractor_id)
