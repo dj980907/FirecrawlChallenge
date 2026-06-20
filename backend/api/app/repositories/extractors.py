@@ -54,6 +54,22 @@ def _insert_extractor(payload: CreateExtractorRequest) -> ExtractorRow:
     return ExtractorRow.model_validate(rows[0])
 
 
+def _list_extractors() -> list[ExtractorRow]:
+    client = get_supabase_client()
+    response = (
+        client.table(TABLE_EXTRACTORS)
+        .select("*")
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return [ExtractorRow.model_validate(row) for row in response.data]
+
+
 async def create_extractor(payload: CreateExtractorRequest) -> ExtractorResponse:
     row = await asyncio.to_thread(_insert_extractor, payload)
     return _row_to_response(row)
+
+
+async def list_extractors() -> list[ExtractorResponse]:
+    rows = await asyncio.to_thread(_list_extractors)
+    return [_row_to_response(row) for row in rows]
