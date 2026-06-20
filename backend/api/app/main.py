@@ -34,8 +34,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Firecrawl Challenge API",
-    description="Backend API for the Firecrawl 72-hour challenge",
+    title="Managed Extractors API",
+    description=(
+        "Self-maintaining extraction pipelines powered by Firecrawl.\n\n"
+        "Define extractors with a prompt and JSON schema; the API handles "
+        "persistence, extraction, validation, drift detection, and auto-repair.\n\n"
+        "See `backend/api/API.md` for endpoint reference and curl examples."
+    ),
     version="0.1.0",
     lifespan=lifespan,
 )

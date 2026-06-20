@@ -18,12 +18,33 @@ from app.models.db_models import (
 
 
 class CreateExtractorRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
-    urls: list[str] = Field(min_length=1)
-    prompt: str = Field(min_length=1)
-    schema_definition: dict[str, Any]
-    schedule: str | None = None
-    model: AgentModel = AgentModel.SPARK_1_MINI
+    name: str = Field(
+        min_length=1,
+        max_length=200,
+        description="Human-readable name for this extractor",
+        examples=["Product Prices"],
+    )
+    urls: list[str] = Field(
+        min_length=1,
+        description="URLs to extract data from",
+        examples=[["https://example.com/product"]],
+    )
+    prompt: str = Field(
+        min_length=1,
+        description="Natural-language instructions for what data to extract",
+        examples=["Extract the product name, price, currency, and availability status"],
+    )
+    schema_definition: dict[str, Any] = Field(
+        description="JSON Schema describing the expected structured output",
+    )
+    schedule: str | None = Field(
+        default=None,
+        description='Optional schedule for future monitor/cron (e.g. "every 6 hours")',
+    )
+    model: AgentModel = Field(
+        default=AgentModel.SPARK_1_MINI,
+        description="Firecrawl agent model tier to use for extractions",
+    )
 
 
 class UpdateExtractorRequest(BaseModel):
@@ -60,22 +81,28 @@ class RepairAttemptOut(BaseModel):
 
 
 class ExtractorResponse(BaseModel):
-    id: str
+    id: str = Field(description="UUID primary key")
     name: str
     urls: list[str]
     prompt: str
     schema_definition: dict[str, Any]
-    schedule: str | None
-    monitor_id: str | None
-    status: ExtractorStatus
-    health: ExtractorHealth
+    schedule: str | None = None
+    monitor_id: str | None = Field(
+        default=None,
+        description="Linked Firecrawl monitor ID (set when monitor integration is added)",
+    )
+    status: ExtractorStatus = Field(description="Operational status")
+    health: ExtractorHealth = Field(description="Health based on recent run quality")
     model_preference: AgentModel
-    consecutive_failures: int
+    consecutive_failures: int = Field(description="Consecutive failed runs")
     created_at: datetime
     updated_at: datetime
-    last_run_at: datetime | None = None
-    run_count: int = 0
-    success_rate: float = 0.0
+    last_run_at: datetime | None = Field(
+        default=None,
+        description="Timestamp of the most recent extraction run",
+    )
+    run_count: int = Field(default=0, description="Total extraction runs")
+    success_rate: float = Field(default=0.0, description="Fraction of successful runs (0–1)")
 
 
 class RunResponse(BaseModel):
