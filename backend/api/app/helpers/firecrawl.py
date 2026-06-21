@@ -1,5 +1,6 @@
 """Helpers for parsing Firecrawl API responses."""
 
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -32,3 +33,39 @@ def extract_scrape_id(scrape_result: Any) -> str:
                 return str(found)
 
     raise RuntimeError("Firecrawl scrape did not return a scrape_id for /interact")
+
+
+def interact_payload(response: Any) -> dict[str, Any]:
+    return response if isinstance(response, dict) else response.model_dump()
+
+
+@dataclass(frozen=True)
+class InteractResponseEvaluation:
+    ok: bool
+    error: str | None = None
+
+
+def evaluate_interact_response(response: Any) -> InteractResponseEvaluation:
+    """Determine whether a Firecrawl /interact call succeeded."""
+    payload = interact_payload(response)
+
+    if payload.get("killed"):
+        return InteractResponseEvaluation(ok=False, error="Interact call timed out")
+
+    if payload.get("success") is not False and payload.get("exitCode", 0) in (None, 0):
+        return InteractResponseEvaluation(ok=True)
+
+    stderr = (payload.get("stderr") or "").strip()
+    error = payload.get("error")
+    exit_code = payload.get("exitCode")
+    parts = [
+        part
+        for part in (
+            error,
+            stderr or None,
+            f"exit_code={exit_code}" if exit_code not in (None, 0) else None,
+        )
+        if part
+    ]
+    message = " | ".join(str(part) for part in parts) or "Interact call failed"
+    return InteractResponseEvaluation(ok=False, error=message)

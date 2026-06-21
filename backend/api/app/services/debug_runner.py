@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import dataclass
 from typing import Any
 
-from app.helpers.firecrawl import extract_scrape_id, get_attr
+from app.helpers.firecrawl import (
+    evaluate_interact_response,
+    extract_scrape_id,
+    interact_payload,
+)
 from app.models.schemas import (
     DebugRunResponse,
     DebugRunStatus,
@@ -28,29 +33,6 @@ body
 """.strip(),
     InteractLanguage.BASH: "agent-browser scrape",
 }
-
-
-def _interact_response_ok(response: Any) -> tuple[bool, str | None]:
-    success = get_attr(response, "success")
-    if success is False:
-        stderr = get_attr(response, "stderr", default="") or ""
-        error = get_attr(response, "error")
-        exit_code = get_attr(response, "exit_code", "exitCode")
-        parts = [
-            part for part in (error, stderr.strip(), f"exit_code={exit_code}") if part
-        ]
-        return False, " | ".join(str(part) for part in parts) or "Interact call failed"
-
-    killed = get_attr(response, "killed")
-    if killed:
-        return False, "Interact call timed out"
-
-    exit_code = get_attr(response, "exit_code", "exitCode")
-    if exit_code not in (None, 0):
-        stderr = get_attr(response, "stderr", default="") or ""
-        return False, stderr.strip() or f"Interact exited with code {exit_code}"
-
-    return True, None
 
 
 def _resolve_language(steps: list[DebugStep]) -> InteractLanguage:
@@ -84,6 +66,97 @@ def _append_skipped_steps(
         )
 
 
+@dataclass(frozen=True)
+class _StepOutcome:
+    result: StepResult
+    failed: bool
+
+
+def _execute_step(
+    client: Any,
+    scrape_id: str,
+    *,
+    index: int,
+    step: DebugStep,
+    language: InteractLanguage,
+) -> _StepOutcome:
+    action_label = step.action_label()
+    step_started = time.monotonic()
+
+    try:
+        response = client.interact(
+            scrape_id, code=step.code, language=language.value
+        )
+    except Exception as exc:
+        return _StepOutcome(
+            result=StepResult(
+                index=index,
+                action=action_label,
+                status=StepStatus.FAILED,
+                duration_ms=int((time.monotonic() - step_started) * 1000),
+                error=str(exc),
+            ),
+            failed=True,
+        )
+
+    evaluation = evaluate_interact_response(response)
+    payload = interact_payload(response)
+    duration_ms = int((time.monotonic() - step_started) * 1000)
+
+    if evaluation.ok:
+        return _StepOutcome(
+            result=StepResult(
+                index=index,
+                action=action_label,
+                status=StepStatus.PASSED,
+                duration_ms=duration_ms,
+                output=payload.get("output"),
+                live_view_url=payload.get("liveViewUrl"),
+            ),
+            failed=False,
+        )
+
+    return _StepOutcome(
+        result=StepResult(
+            index=index,
+            action=action_label,
+            status=StepStatus.FAILED,
+            duration_ms=duration_ms,
+            error=evaluation.error,
+            output=payload.get("output"),
+            live_view_url=payload.get("liveViewUrl"),
+        ),
+        failed=True,
+    )
+
+
+def _fetch_page_content(
+    client: Any,
+    scrape_id: str,
+    *,
+    language: InteractLanguage,
+    scrape_result: Any,
+) -> str | None:
+    try:
+        response = client.interact(scrape_id, **_page_content_kwargs(language))
+        evaluation = evaluate_interact_response(response)
+        if evaluation.ok:
+            output = interact_payload(response).get("output")
+            if output is not None:
+                return str(output)
+    except Exception:
+        pass
+
+    payload = (
+        scrape_result.model_dump()
+        if hasattr(scrape_result, "model_dump")
+        else scrape_result
+    )
+    if isinstance(payload, dict):
+        return payload.get("markdown")
+    return None
+
+
 def run_debug_sequence(
     url: str,
     steps: list[DebugStep],
@@ -109,84 +182,26 @@ def run_debug_sequence(
         scrape_id = extract_scrape_id(scrape_result)
 
         for index, step in enumerate(steps, start=1):
-            action_label = step.action_label()
-            step_started = time.monotonic()
-
-            try:
-                response = client.interact(
-                    scrape_id, code=step.code, language=language.value
-                )
-            except Exception as exc:
-                duration_ms = int((time.monotonic() - step_started) * 1000)
-                step_results.append(
-                    StepResult(
-                        index=index,
-                        action=action_label,
-                        status=StepStatus.FAILED,
-                        duration_ms=duration_ms,
-                        error=str(exc),
-                    )
-                )
+            outcome = _execute_step(
+                client,
+                scrape_id,
+                index=index,
+                step=step,
+                language=language,
+            )
+            step_results.append(outcome.result)
+            if outcome.failed:
                 failed_at_step = index
                 _append_skipped_steps(step_results, steps, index + 1)
                 break
 
-            ok, error = _interact_response_ok(response)
-            duration_ms = int((time.monotonic() - step_started) * 1000)
-            payload = response if isinstance(response, dict) else response.model_dump()
-
-            if ok:
-                step_results.append(
-                    StepResult(
-                        index=index,
-                        action=action_label,
-                        status=StepStatus.PASSED,
-                        duration_ms=duration_ms,
-                        output=payload.get("output"),
-                        live_view_url=payload.get("liveViewUrl"),
-                    )
-                )
-                continue
-
-            step_results.append(
-                StepResult(
-                    index=index,
-                    action=action_label,
-                    status=StepStatus.FAILED,
-                    duration_ms=duration_ms,
-                    error=error,
-                    output=payload.get("output"),
-                    live_view_url=payload.get("liveViewUrl"),
-                )
-            )
-            failed_at_step = index
-            _append_skipped_steps(step_results, steps, index + 1)
-            break
-
         if failed_at_step is None:
-            try:
-                content_response = client.interact(
-                    scrape_id, **_page_content_kwargs(language)
-                )
-                ok, _ = _interact_response_ok(content_response)
-                if ok:
-                    content_payload = (
-                        content_response
-                        if isinstance(content_response, dict)
-                        else content_response.model_dump()
-                    )
-                    page_content = content_payload.get("output")
-            except Exception:
-                pass
-
-            if not page_content:
-                payload = (
-                    scrape_result.model_dump()
-                    if hasattr(scrape_result, "model_dump")
-                    else scrape_result
-                )
-                if isinstance(payload, dict):
-                    page_content = payload.get("markdown")
+            page_content = _fetch_page_content(
+                client,
+                scrape_id,
+                language=language,
+                scrape_result=scrape_result,
+            )
 
     finally:
         if scrape_id:
