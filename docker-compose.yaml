@@ -41,6 +41,7 @@ services:
     environment:
       - FIRECRAWL_API_KEY={SET IN DOCKER-COMPOSE.OVERRIDE.YAML}
       - ANTHROPIC_API_KEY={SET IN DOCKER-COMPOSE.OVERRIDE.YAML}
+      - API_KEY={SET IN DOCKER-COMPOSE.OVERRIDE.YAML}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.api.rule=Host(`api.localhost`)"

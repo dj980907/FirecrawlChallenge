@@ -31,7 +31,10 @@ services:
     environment:
       - FIRECRAWL_API_KEY=fc-your-api-key-here
       - ANTHROPIC_API_KEY=sk-ant-your-api-key-here
+      - API_KEY=your-debug-runner-api-key-here
 ```
+
+When `API_KEY` is set, all `/debug/*` requests must include it as `X-API-Key: ...` or `Authorization: Bearer ...`. `/health` stays public.
 
 Start the stack:
 
@@ -56,6 +59,7 @@ See [Successful Runs](#scrape-actions-array-1) below for full example payloads. 
 ```bash
 curl -s -X POST http://api.localhost/debug/scrape/actions \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your-debug-runner-api-key-here" \
   -d @- <<'EOF' | jq
 {
   "url": "https://news.ycombinator.com",
@@ -82,6 +86,7 @@ EOF
 ```bash
 curl -s -X POST http://api.localhost/debug/interact/code \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your-debug-runner-api-key-here" \
   -d '{
     "url": "https://example.com",
     "code_block": "await page.click(\"#login\");\nJSON.stringify({ ok: true });",
@@ -98,6 +103,7 @@ cd backend/api
 poetry install
 export FIRECRAWL_API_KEY=fc-...
 export ANTHROPIC_API_KEY=sk-ant-...
+export API_KEY=your-debug-runner-api-key-here
 poetry run uvicorn app.main:app --reload --port 8000
 ```
 
@@ -107,10 +113,13 @@ Open http://localhost:8000/docs.
 
 Both keys are required for **`/debug/interact/code`**. Only `FIRECRAWL_API_KEY` is required for **`/debug/scrape/actions`**.
 
-| Variable            | Required       | Purpose                        |
-| ------------------- | -------------- | ------------------------------ |
-| `FIRECRAWL_API_KEY` | Yes            | Scrape + `/interact` execution |
-| `ANTHROPIC_API_KEY` | Code path only | Claude code splitting          |
+| Variable            | Required       | Purpose                                      |
+| ------------------- | -------------- | -------------------------------------------- |
+| `FIRECRAWL_API_KEY` | Yes            | Scrape + `/interact` execution               |
+| `ANTHROPIC_API_KEY` | Code path only | Claude code splitting                        |
+| `API_KEY`           | Recommended    | Protects `/debug/*` from unauthenticated use |
+
+When `API_KEY` is unset, debug routes are open (local/tests only). Set it in `docker-compose.override.yaml` for any shared or public deployment.
 
 `docker-compose.yaml` ships with placeholders; **`docker-compose.override.yaml` is where you put real values** (see `docker-compose.override.yaml.example`).
 

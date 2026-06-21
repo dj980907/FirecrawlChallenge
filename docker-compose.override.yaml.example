@@ -3,3 +3,4 @@ services:
     environment:
       - FIRECRAWL_API_KEY=fc-your-api-key-here
       - ANTHROPIC_API_KEY=sk-your-api-key-here
+      - API_KEY=your-debug-runner-api-key-here

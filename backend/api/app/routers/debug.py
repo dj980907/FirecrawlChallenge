@@ -1,11 +1,12 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.controllers.actions_debug_controller import run_actions_debug
 from app.controllers.code_block_debug_controller import run_code_block_debug
+from app.helpers.auth import require_api_key
 from app.models.schemas import CodeBlockDebugRunRequest, DebugRunResponse
 from app.models.scrape_actions import ActionsDebugRunRequest
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_api_key)])
 
 
 @router.post("/scrape/actions", response_model=DebugRunResponse)
