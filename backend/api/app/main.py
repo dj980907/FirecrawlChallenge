@@ -23,7 +23,7 @@ app.add_middleware(
 
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(firecrawl.router, prefix="/firecrawl", tags=["firecrawl"])
-app.include_router(debug.router, tags=["debug"])
+app.include_router(debug.router, prefix="/debug", tags=["debug"])
 
 
 @app.get("/")

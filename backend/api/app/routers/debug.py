@@ -6,7 +6,7 @@ from app.models.schemas import CodeBlockDebugRunRequest, DebugRunResponse
 router = APIRouter()
 
 
-@router.post("/debug-run/code-block", response_model=DebugRunResponse)
+@router.post("/interact/code", response_model=DebugRunResponse)
 async def debug_run_code_block(body: CodeBlockDebugRunRequest) -> DebugRunResponse:
     """
     Run a code block split into /interact steps via Claude.
