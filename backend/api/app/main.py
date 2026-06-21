@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import debug, firecrawl, health
+from app.routers import debug, health
 
 app = FastAPI(
     title="Action Debug Runner",
@@ -22,7 +22,6 @@ app.add_middleware(
 )
 
 app.include_router(health.router, prefix="/health", tags=["health"])
-app.include_router(firecrawl.router, prefix="/firecrawl", tags=["firecrawl"])
 app.include_router(debug.router, prefix="/debug", tags=["debug"])
 
 
