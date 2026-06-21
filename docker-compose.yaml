@@ -55,39 +55,6 @@ services:
     networks:
       - docker_net
 
-  frontend:
-    container_name: frontend
-    logging:
-      options:
-        max-size: "50m"
-        max-file: "3"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.frontend.rule=Host(`localhost`) || Host(`app.localhost`) || HostRegexp(`^(.+\\.)?app\\.localhost$$`)"
-      - "traefik.http.routers.frontend.entrypoints=web"
-      - "traefik.http.routers.frontend.priority=1"
-      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
-    environment:
-      # Browser → Traefik; Next.js server (SSR) → Docker service name
-      - API_URL=http://api
-      - NEXT_PUBLIC_API_URL=http://api.localhost
-    ports:
-      - "3000:3000"
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.local
-    volumes:
-      # Only mount source directories, not individual config files
-      # Config files are copied in Dockerfile to avoid file watching issues on macOS
-      - "./frontend/app:/app/app"
-      - "./frontend/components:/app/components"
-      - "./frontend/lib:/app/lib"
-      - "./frontend/public:/app/public"
-      - "./frontend/next.config.js:/app/next.config.js"
-      - "/app/node_modules"
-    networks:
-      - docker_net
-
 networks:
   docker_net:
     name: docker_net

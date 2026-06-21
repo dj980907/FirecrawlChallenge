@@ -3,7 +3,6 @@
   "exclude": [
     "**/node_modules",
     "**/.venv",
-    "frontend",
     "**/__pycache__",
     "**/.pytest_cache",
     "**/.mypy_cache",

@@ -27,13 +27,6 @@ dist-ssr
 # Docker
 docker-compose.override.yaml
 
-# Next.js
-frontend/node_modules
-frontend/.next
-frontend/out
-frontend/.vercel
-frontend/tsconfig.tsbuildinfo
-
 # Python
 __pycache__
 *.py[cod]

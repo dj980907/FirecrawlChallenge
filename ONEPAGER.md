@@ -92,7 +92,7 @@ Scoped to what #7 asked for: find the failing step and see the page at failure. 
 
 **Auto-fixing broken selectors.** Knowing step 11 failed is different from fixing the selector. Self-healing would turn this into remediation (#9 territory). #7 only asked for observability. This would be a next step using ai layer that explains what might have gone wrong and how to fix it.
 
-**Dashboard or run history.** The repo includes a Next.js starter shell, but the product surface is the debug JSON report from `/debug/scrape/actions` and `/debug/interact/code`. Runs are stateless: no database, no saved timelines. That matches debugging one broken workflow in CI or a REPL, not operating a monitoring product. I wanted to spend my time going through the architecture than try to spin up cute dashboard. Dashboard in Firecrawl would be hugely help people who is not as technical.
+**Dashboard or run history.** The product surface is the debug JSON report from `/debug/scrape/actions` and `/debug/interact/code`. Runs are stateless: no database, no saved timelines. That matches debugging one broken workflow in CI or a REPL, not operating a monitoring product. I skipped a UI to focus on the API architecture; a dashboard inside Firecrawl would still help less technical users.
 
 **The #9 self-correcting extraction layer.** See above: `/monitor` plus autonomous repair is the bigger bet I almost took instead of this.
 

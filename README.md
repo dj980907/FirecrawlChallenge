@@ -45,7 +45,6 @@ docker compose up --build
 | Service           | URL                           |
 | ----------------- | ----------------------------- |
 | API docs          | http://api.localhost/docs     |
-| Frontend          | http://localhost:3000         |
 | Traefik dashboard | http://traefik.localhost:8080 |
 
 Try **`POST /debug/scrape/actions`** (Feedback #7's native input) or **`POST /debug/interact/code`** from the Swagger UI.
