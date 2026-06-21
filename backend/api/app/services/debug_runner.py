@@ -101,8 +101,6 @@ def _execute_step(
 
     evaluation = evaluate_interact_response(response)
     payload = interact_payload(response)
-    print("this is the response", response)
-    print("this is the payload", payload)
     duration_ms = int((time.monotonic() - step_started) * 1000)
 
     if evaluation.ok:
