@@ -16,6 +16,36 @@ class DebugRunStatus(StrEnum):
     FAILED = "failed"
 
 
+class InteractLanguage(StrEnum):
+    NODE = "node"
+    PYTHON = "python"
+    BASH = "bash"
+
+
+def normalize_interact_language(language: str | InteractLanguage | None) -> InteractLanguage:
+    if language is None:
+        return InteractLanguage.NODE
+    if isinstance(language, InteractLanguage):
+        return language
+
+    value = language.strip().lower()
+    aliases = {
+        "node": InteractLanguage.NODE,
+        "javascript": InteractLanguage.NODE,
+        "js": InteractLanguage.NODE,
+        "python": InteractLanguage.PYTHON,
+        "py": InteractLanguage.PYTHON,
+        "bash": InteractLanguage.BASH,
+        "shell": InteractLanguage.BASH,
+    }
+    try:
+        return aliases[value]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unsupported language {language!r}. Use node, python, or bash."
+        ) from exc
+
+
 class DebugStep(BaseModel):
     """Internal step model — exactly one of prompt or code."""
 
@@ -46,14 +76,15 @@ class CodeDebugStep(BaseModel):
         description="Playwright or bash code for /interact code mode",
         examples=["await page.click('#login'); true"],
     )
-    language: str | None = Field(
+    language: InteractLanguage | None = Field(
         default=None,
         description="Code language: node (default), python, or bash",
         examples=["bash"],
     )
 
     def to_debug_step(self) -> DebugStep:
-        return DebugStep(code=self.code, language=self.language)
+        lang = self.language.value if self.language else None
+        return DebugStep(code=self.code, language=lang)
 
 
 class PromptDebugStep(BaseModel):
@@ -72,7 +103,7 @@ class MixedDebugStep(BaseModel):
 
     prompt: str | None = Field(default=None, min_length=1)
     code: str | None = Field(default=None, min_length=1)
-    language: str | None = Field(default=None)
+    language: InteractLanguage | None = Field(default=None)
 
     @model_validator(mode="after")
     def require_prompt_or_code(self) -> "MixedDebugStep":
@@ -83,12 +114,25 @@ class MixedDebugStep(BaseModel):
         return self
 
     def to_debug_step(self) -> DebugStep:
-        return DebugStep(prompt=self.prompt, code=self.code, language=self.language)
+        lang = self.language.value if self.language else None
+        return DebugStep(prompt=self.prompt, code=self.code, language=lang)
 
 
 class CodeDebugRunRequest(BaseModel):
     url: HttpUrl = Field(description="Page URL to open before running steps")
     steps: list[CodeDebugStep] = Field(min_length=1)
+
+
+class CodeBlockDebugRunRequest(BaseModel):
+    url: HttpUrl = Field(description="Page URL to open before running steps")
+    code_block: str = Field(
+        min_length=1,
+        description="Script to split into /interact steps (Node, Python, or bash)",
+    )
+    language: InteractLanguage = Field(
+        default=InteractLanguage.NODE,
+        description="Language for /interact code mode: node, python, or bash",
+    )
 
 
 class PromptDebugRunRequest(BaseModel):
@@ -145,4 +189,12 @@ class DebugRunResponse(BaseModel):
     scrape_id: str | None = Field(
         default=None,
         description="Firecrawl scrape session ID used for this run",
+    )
+    parsed_steps: list[str] | None = Field(
+        default=None,
+        description="Split step code snippets when the request used code_block",
+    )
+    step_summaries: list[str] | None = Field(
+        default=None,
+        description="Human-readable step labels when split with AI",
     )

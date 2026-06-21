@@ -7,10 +7,12 @@ from app.models.schemas import (
     CodeDebugRunRequest,
     CodeDebugStep,
     DebugStep,
+    InteractLanguage,
     MixedDebugRunRequest,
     MixedDebugStep,
     PromptDebugRunRequest,
     PromptDebugStep,
+    normalize_interact_language,
 )
 
 
@@ -62,3 +64,14 @@ def test_mixed_debug_run_request() -> None:
 def test_internal_debug_step_validation() -> None:
     with pytest.raises(ValidationError):
         DebugStep()
+
+
+def test_normalize_interact_language() -> None:
+    assert normalize_interact_language("py") == InteractLanguage.PYTHON
+    assert normalize_interact_language("shell") == InteractLanguage.BASH
+    assert normalize_interact_language(None) == InteractLanguage.NODE
+
+
+def test_code_step_with_language() -> None:
+    step = CodeDebugStep(code="agent-browser click @e1\ntrue", language=InteractLanguage.BASH)
+    assert step.to_debug_step().language == "bash"

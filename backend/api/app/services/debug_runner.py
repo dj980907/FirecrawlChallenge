@@ -10,20 +10,40 @@ from app.models.schemas import (
     DebugRunResponse,
     DebugRunStatus,
     DebugStep,
+    InteractLanguage,
     StepResult,
     StepStatus,
+    normalize_interact_language,
 )
 from app.services.firecrawl_client import get_firecrawl_client
 
-SCREENSHOT_CODE = """
+DIAGNOSTIC_SNIPPETS: dict[InteractLanguage, dict[str, str]] = {
+    InteractLanguage.NODE: {
+        "screenshot": """
 const buf = await page.screenshot({ fullPage: false });
 buf.toString('base64');
-""".strip()
-
-PAGE_CONTENT_CODE = """
+""".strip(),
+        "page_content": """
 const body = await page.locator('body').innerText();
 body;
-""".strip()
+""".strip(),
+    },
+    InteractLanguage.PYTHON: {
+        "screenshot": """
+import base64
+data = await page.screenshot(full_page=False)
+base64.b64encode(data).decode()
+""".strip(),
+        "page_content": """
+body = await page.locator("body").inner_text()
+body
+""".strip(),
+    },
+    InteractLanguage.BASH: {
+        "screenshot": "agent-browser screenshot",
+        "page_content": "agent-browser scrape",
+    },
+}
 
 
 def _get_attr(obj: Any, *names: str, default: Any = None) -> Any:
@@ -88,6 +108,29 @@ def _run_interact(client: Any, scrape_id: str, step: DebugStep) -> Any:
     return client.interact(scrape_id, **kwargs)
 
 
+def _resolve_language(steps: list[DebugStep]) -> InteractLanguage:
+    for step in steps:
+        if step.code and step.language:
+            return normalize_interact_language(step.language)
+    return InteractLanguage.NODE
+
+
+def _diagnostic_kwargs(language: InteractLanguage) -> dict[str, Any]:
+    if language == InteractLanguage.BASH:
+        return {"code": DIAGNOSTIC_SNIPPETS[language]["screenshot"], "language": "bash"}
+    if language == InteractLanguage.PYTHON:
+        return {"code": DIAGNOSTIC_SNIPPETS[language]["screenshot"], "language": "python"}
+    return {"code": DIAGNOSTIC_SNIPPETS[InteractLanguage.NODE]["screenshot"]}
+
+
+def _page_content_kwargs(language: InteractLanguage) -> dict[str, Any]:
+    if language == InteractLanguage.BASH:
+        return {"code": DIAGNOSTIC_SNIPPETS[language]["page_content"], "language": "bash"}
+    if language == InteractLanguage.PYTHON:
+        return {"code": DIAGNOSTIC_SNIPPETS[language]["page_content"], "language": "python"}
+    return {"code": DIAGNOSTIC_SNIPPETS[InteractLanguage.NODE]["page_content"]}
+
+
 def _step_fields_from_response(response: Any) -> dict[str, str | None]:
     output = _get_attr(response, "output")
     live_view = _get_attr(response, "live_view_url", "liveViewUrl")
@@ -97,9 +140,14 @@ def _step_fields_from_response(response: Any) -> dict[str, str | None]:
     }
 
 
-def _capture_screenshot(client: Any, scrape_id: str) -> str | None:
+def _capture_screenshot(
+    client: Any,
+    scrape_id: str,
+    *,
+    language: InteractLanguage,
+) -> str | None:
     try:
-        shot = client.interact(scrape_id, code=SCREENSHOT_CODE)
+        shot = client.interact(scrape_id, **_diagnostic_kwargs(language))
         ok, _ = _interact_response_ok(shot)
         if ok:
             result = _get_attr(shot, "result")
@@ -134,7 +182,13 @@ def _append_skipped_steps(
         )
 
 
-def run_debug_sequence(url: str, steps: list[DebugStep]) -> DebugRunResponse:
+def run_debug_sequence(
+    url: str,
+    steps: list[DebugStep],
+    *,
+    parsed_steps: list[str] | None = None,
+    step_summaries: list[str] | None = None,
+) -> DebugRunResponse:
     """
     Execute each /interact step individually and return a debug report.
 
@@ -146,6 +200,7 @@ def run_debug_sequence(url: str, steps: list[DebugStep]) -> DebugRunResponse:
     step_results: list[StepResult] = []
     failed_at_step: int | None = None
     page_content: str | None = None
+    language = _resolve_language(steps)
 
     try:
         scrape_result = client.scrape(url, formats=["markdown"])
@@ -166,7 +221,9 @@ def run_debug_sequence(url: str, steps: list[DebugStep]) -> DebugRunResponse:
                         status=StepStatus.FAILED,
                         duration_ms=duration_ms,
                         error=str(exc),
-                        screenshot_base64=_capture_screenshot(client, scrape_id),
+                        screenshot_base64=_capture_screenshot(
+                            client, scrape_id, language=language
+                        ),
                     )
                 )
                 failed_at_step = index
@@ -199,7 +256,9 @@ def run_debug_sequence(url: str, steps: list[DebugStep]) -> DebugRunResponse:
                     error=error,
                     output=fields["output"],
                     live_view_url=fields["live_view_url"],
-                    screenshot_base64=_capture_screenshot(client, scrape_id),
+                    screenshot_base64=_capture_screenshot(
+                        client, scrape_id, language=language
+                    ),
                 )
             )
             failed_at_step = index
@@ -208,7 +267,9 @@ def run_debug_sequence(url: str, steps: list[DebugStep]) -> DebugRunResponse:
 
         if failed_at_step is None:
             try:
-                content_response = client.interact(scrape_id, code=PAGE_CONTENT_CODE)
+                content_response = client.interact(
+                    scrape_id, **_page_content_kwargs(language)
+                )
                 ok, _ = _interact_response_ok(content_response)
                 if ok:
                     result = _get_attr(content_response, "result")
@@ -240,10 +301,22 @@ def run_debug_sequence(url: str, steps: list[DebugStep]) -> DebugRunResponse:
         steps=step_results,
         page_content=page_content,
         scrape_id=scrape_id,
+        parsed_steps=parsed_steps,
+        step_summaries=step_summaries,
     )
 
 
 async def run_debug_sequence_async(
-    url: str, steps: list[DebugStep]
+    url: str,
+    steps: list[DebugStep],
+    *,
+    parsed_steps: list[str] | None = None,
+    step_summaries: list[str] | None = None,
 ) -> DebugRunResponse:
-    return await asyncio.to_thread(run_debug_sequence, url, steps)
+    return await asyncio.to_thread(
+        run_debug_sequence,
+        url,
+        steps,
+        parsed_steps=parsed_steps,
+        step_summaries=step_summaries,
+    )

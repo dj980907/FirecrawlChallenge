@@ -1,4 +1,5 @@
 from app.models.schemas import (
+    CodeBlockDebugRunRequest,
     CodeDebugRunRequest,
     CodeDebugStep,
     DebugRunResponse,
@@ -13,6 +14,7 @@ from app.models.schemas import (
 )
 
 __all__ = [
+    "CodeBlockDebugRunRequest",
     "CodeDebugRunRequest",
     "CodeDebugStep",
     "DebugRunResponse",
