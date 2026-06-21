@@ -88,13 +88,11 @@ Scoped to what #7 asked for: find the failing step and see the page at failure. 
 
 **Prompt or pre-split step inputs.** I dropped alternate endpoints that accepted a natural-language prompt or an explicit step list. The two supported inputs are scrape `actions[]` and a full code block.
 
-**Byte-identical scrape `actions` execution.** The actions endpoint compiles each action to `/interact` code and runs step-by-step. That gives the observability #7 asked for, but timing and semantics may differ slightly from one monolithic `/scrape` call with a fourteen-step array. Prefix re-scrapes or native `failedActionIndex` from Firecrawl would be needed for prod-parity.
-
 **Screenshot capture on failure.** `/interact` already returns `liveViewUrl` on the failing step, which answers "what did the page look like?" Base64 screenshots would duplicate that signal and add latency and storage for a 72-hour API demo.
 
-**Auto-fixing broken selectors.** Knowing step 11 failed is different from fixing the selector. Self-healing would turn this into remediation (#9 territory). #7 only asked for observability.
+**Auto-fixing broken selectors.** Knowing step 11 failed is different from fixing the selector. Self-healing would turn this into remediation (#9 territory). #7 only asked for observability. This would be a next step using ai layer that explains what might have gone wrong and how to fix it.
 
-**Dashboard or run history.** The repo includes a Next.js starter shell, but the product surface is the debug JSON report from `/debug/scrape/actions` and `/debug/interact/code`. Runs are stateless: no database, no saved timelines. That matches debugging one broken workflow in CI or a REPL, not operating a monitoring product.
+**Dashboard or run history.** The repo includes a Next.js starter shell, but the product surface is the debug JSON report from `/debug/scrape/actions` and `/debug/interact/code`. Runs are stateless: no database, no saved timelines. That matches debugging one broken workflow in CI or a REPL, not operating a monitoring product. I wanted to spend my time going through the architecture than try to spin up cute dashboard. Dashboard in Firecrawl would be hugely help people who is not as technical.
 
 **The #9 self-correcting extraction layer.** See above: `/monitor` plus autonomous repair is the bigger bet I almost took instead of this.
 
