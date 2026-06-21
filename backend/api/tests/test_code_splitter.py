@@ -5,14 +5,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.schemas import InteractLanguage
-from app.services.code_splitter import (
+from app.models.code_splitter import (
     AnthropicNotConfiguredError,
     CodeSplitError,
     CodeSplitPlan,
     CodeSplitStepOut,
-    prepare_step_code,
-    split_code_block,
 )
+from app.services.code_split_result_builder import prepare_step_code
+from app.services.code_splitter import split_code_block
 
 
 def _mock_parse_response(steps: list[CodeSplitStepOut]) -> MagicMock:

@@ -28,9 +28,6 @@ def print_report(title: str, report) -> None:
     print(title)
     print(f"{'=' * 60}")
     payload = report.model_dump()
-    for step in payload.get("steps", []):
-        if step.get("screenshot_base64"):
-            step["screenshot_base64"] = f"<{len(step['screenshot_base64'])} chars>"
     print(json.dumps(payload, indent=2))
 
 

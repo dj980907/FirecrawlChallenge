@@ -6,6 +6,7 @@ import asyncio
 import time
 from typing import Any
 
+from app.helpers.firecrawl import extract_scrape_id, get_attr
 from app.models.schemas import (
     DebugRunResponse,
     DebugRunStatus,
@@ -16,93 +17,40 @@ from app.models.schemas import (
 )
 from app.services.firecrawl_client import get_firecrawl_client
 
-DIAGNOSTIC_SNIPPETS: dict[InteractLanguage, dict[str, str]] = {
-    InteractLanguage.NODE: {
-        "screenshot": """
-const buf = await page.screenshot({ fullPage: false });
-buf.toString('base64');
-""".strip(),
-        "page_content": """
+PAGE_CONTENT_SNIPPETS: dict[InteractLanguage, str] = {
+    InteractLanguage.NODE: """
 const body = await page.locator('body').innerText();
 body;
 """.strip(),
-    },
-    InteractLanguage.PYTHON: {
-        "screenshot": """
-import base64
-data = await page.screenshot(full_page=False)
-base64.b64encode(data).decode()
-""".strip(),
-        "page_content": """
+    InteractLanguage.PYTHON: """
 body = await page.locator("body").inner_text()
 body
 """.strip(),
-    },
-    InteractLanguage.BASH: {
-        "screenshot": "agent-browser screenshot",
-        "page_content": "agent-browser scrape",
-    },
+    InteractLanguage.BASH: "agent-browser scrape",
 }
 
 
-def _get_attr(obj: Any, *names: str, default: Any = None) -> Any:
-    for name in names:
-        if isinstance(obj, dict) and name in obj:
-            return obj[name]
-        if hasattr(obj, name):
-            return getattr(obj, name)
-    return default
-
-
-def _extract_scrape_id(scrape_result: Any) -> str:
-    metadata = _get_attr(scrape_result, "metadata")
-    scrape_id = _get_attr(metadata, "scrape_id", "scrapeId")
-    if scrape_id:
-        return str(scrape_id)
-
-    payload = (
-        scrape_result.model_dump()
-        if hasattr(scrape_result, "model_dump")
-        else scrape_result
-    )
-    if isinstance(payload, dict):
-        meta = payload.get("metadata") or {}
-        if isinstance(meta, dict):
-            found = meta.get("scrape_id") or meta.get("scrapeId")
-            if found:
-                return str(found)
-
-    raise RuntimeError("Firecrawl scrape did not return a scrape_id for /interact")
-
-
 def _interact_response_ok(response: Any) -> tuple[bool, str | None]:
-    success = _get_attr(response, "success")
+    success = get_attr(response, "success")
     if success is False:
-        stderr = _get_attr(response, "stderr", default="") or ""
-        error = _get_attr(response, "error")
-        exit_code = _get_attr(response, "exit_code", "exitCode")
+        stderr = get_attr(response, "stderr", default="") or ""
+        error = get_attr(response, "error")
+        exit_code = get_attr(response, "exit_code", "exitCode")
         parts = [
             part for part in (error, stderr.strip(), f"exit_code={exit_code}") if part
         ]
         return False, " | ".join(str(part) for part in parts) or "Interact call failed"
 
-    killed = _get_attr(response, "killed")
+    killed = get_attr(response, "killed")
     if killed:
         return False, "Interact call timed out"
 
-    exit_code = _get_attr(response, "exit_code", "exitCode")
+    exit_code = get_attr(response, "exit_code", "exitCode")
     if exit_code not in (None, 0):
-        stderr = _get_attr(response, "stderr", default="") or ""
+        stderr = get_attr(response, "stderr", default="") or ""
         return False, stderr.strip() or f"Interact exited with code {exit_code}"
 
     return True, None
-
-
-def _run_interact(client: Any, scrape_id: str, step: DebugStep) -> Any:
-    kwargs: dict[str, Any] = {"code": step.code}
-    if step.language:
-        kwargs["language"] = step.language.value
-    return client.interact(scrape_id, **kwargs)
 
 
 def _resolve_language(steps: list[DebugStep]) -> InteractLanguage:
@@ -112,55 +60,12 @@ def _resolve_language(steps: list[DebugStep]) -> InteractLanguage:
     return InteractLanguage.NODE
 
 
-def _diagnostic_kwargs(language: InteractLanguage) -> dict[str, Any]:
-    if language == InteractLanguage.BASH:
-        return {"code": DIAGNOSTIC_SNIPPETS[language]["screenshot"], "language": "bash"}
-    if language == InteractLanguage.PYTHON:
-        return {"code": DIAGNOSTIC_SNIPPETS[language]["screenshot"], "language": "python"}
-    return {"code": DIAGNOSTIC_SNIPPETS[InteractLanguage.NODE]["screenshot"]}
-
-
 def _page_content_kwargs(language: InteractLanguage) -> dict[str, Any]:
     if language == InteractLanguage.BASH:
-        return {"code": DIAGNOSTIC_SNIPPETS[language]["page_content"], "language": "bash"}
+        return {"code": PAGE_CONTENT_SNIPPETS[language], "language": "bash"}
     if language == InteractLanguage.PYTHON:
-        return {"code": DIAGNOSTIC_SNIPPETS[language]["page_content"], "language": "python"}
-    return {"code": DIAGNOSTIC_SNIPPETS[InteractLanguage.NODE]["page_content"]}
-
-
-def _step_fields_from_response(response: Any) -> dict[str, str | None]:
-    output = _get_attr(response, "output")
-    live_view = _get_attr(response, "live_view_url", "liveViewUrl")
-    return {
-        "output": str(output) if output is not None else None,
-        "live_view_url": str(live_view) if live_view else None,
-    }
-
-
-def _capture_screenshot(
-    client: Any,
-    scrape_id: str,
-    *,
-    language: InteractLanguage,
-) -> str | None:
-    try:
-        shot = client.interact(scrape_id, **_diagnostic_kwargs(language))
-        ok, _ = _interact_response_ok(shot)
-        if ok:
-            result = _get_attr(shot, "result")
-            return str(result) if result is not None else None
-    except Exception:
-        pass
-    return None
-
-
-def _stop_session(client: Any, scrape_id: str | None) -> None:
-    if not scrape_id:
-        return
-    try:
-        client.stop_interaction(scrape_id)
-    except Exception:
-        pass
+        return {"code": PAGE_CONTENT_SNIPPETS[language], "language": "python"}
+    return {"code": PAGE_CONTENT_SNIPPETS[InteractLanguage.NODE]}
 
 
 def _append_skipped_steps(
@@ -189,7 +94,7 @@ def run_debug_sequence(
     """
     Execute each /interact step individually and return a debug report.
 
-    On the first failure, capture a screenshot and skip remaining steps.
+    On the first failure, skip remaining steps.
     """
     client = get_firecrawl_client()
     scrape_id: str | None = None
@@ -201,14 +106,16 @@ def run_debug_sequence(
 
     try:
         scrape_result = client.scrape(url, formats=["markdown"])
-        scrape_id = _extract_scrape_id(scrape_result)
+        scrape_id = extract_scrape_id(scrape_result)
 
         for index, step in enumerate(steps, start=1):
             action_label = step.action_label()
             step_started = time.monotonic()
 
             try:
-                response = _run_interact(client, scrape_id, step)
+                response = client.interact(
+                    scrape_id, code=step.code, language=language.value
+                )
             except Exception as exc:
                 duration_ms = int((time.monotonic() - step_started) * 1000)
                 step_results.append(
@@ -218,18 +125,15 @@ def run_debug_sequence(
                         status=StepStatus.FAILED,
                         duration_ms=duration_ms,
                         error=str(exc),
-                        screenshot_base64=_capture_screenshot(
-                            client, scrape_id, language=language
-                        ),
                     )
                 )
                 failed_at_step = index
                 _append_skipped_steps(step_results, steps, index + 1)
                 break
 
-            fields = _step_fields_from_response(response)
             ok, error = _interact_response_ok(response)
             duration_ms = int((time.monotonic() - step_started) * 1000)
+            payload = response if isinstance(response, dict) else response.model_dump()
 
             if ok:
                 step_results.append(
@@ -238,8 +142,8 @@ def run_debug_sequence(
                         action=action_label,
                         status=StepStatus.PASSED,
                         duration_ms=duration_ms,
-                        output=fields["output"],
-                        live_view_url=fields["live_view_url"],
+                        output=payload.get("output"),
+                        live_view_url=payload.get("liveViewUrl"),
                     )
                 )
                 continue
@@ -251,11 +155,8 @@ def run_debug_sequence(
                     status=StepStatus.FAILED,
                     duration_ms=duration_ms,
                     error=error,
-                    output=fields["output"],
-                    live_view_url=fields["live_view_url"],
-                    screenshot_base64=_capture_screenshot(
-                        client, scrape_id, language=language
-                    ),
+                    output=payload.get("output"),
+                    live_view_url=payload.get("liveViewUrl"),
                 )
             )
             failed_at_step = index
@@ -269,9 +170,12 @@ def run_debug_sequence(
                 )
                 ok, _ = _interact_response_ok(content_response)
                 if ok:
-                    result = _get_attr(content_response, "result")
-                    if result is not None:
-                        page_content = str(result)
+                    content_payload = (
+                        content_response
+                        if isinstance(content_response, dict)
+                        else content_response.model_dump()
+                    )
+                    page_content = content_payload.get("output")
             except Exception:
                 pass
 
@@ -285,7 +189,8 @@ def run_debug_sequence(
                     page_content = payload.get("markdown")
 
     finally:
-        _stop_session(client, scrape_id)
+        if scrape_id:
+            client.stop_interaction(scrape_id)
 
     total_duration_ms = int((time.monotonic() - started) * 1000)
     status = DebugRunStatus.FAILED if failed_at_step else DebugRunStatus.COMPLETED

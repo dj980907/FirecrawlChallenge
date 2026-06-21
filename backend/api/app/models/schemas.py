@@ -59,10 +59,6 @@ class StepResult(BaseModel):
         default=None,
         description="Read-only live browser stream URL from /interact",
     )
-    screenshot_base64: str | None = Field(
-        default=None,
-        description="Page screenshot at failure time (base64 PNG)",
-    )
 
 
 class DebugRunResponse(BaseModel):

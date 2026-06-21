@@ -1,12 +1,9 @@
 from fastapi import HTTPException, status
 
 from app.controllers.debug_controller import run_debug
+from app.models.code_splitter import AnthropicNotConfiguredError, CodeSplitError
 from app.models.schemas import CodeBlockDebugRunRequest, DebugRunResponse, DebugStep
-from app.services.code_splitter import (
-    AnthropicNotConfiguredError,
-    CodeSplitError,
-    split_code_block,
-)
+from app.services.code_splitter import split_code_block
 
 
 async def run_code_block_debug(body: CodeBlockDebugRunRequest) -> DebugRunResponse:
