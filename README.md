@@ -52,7 +52,7 @@ Try **`POST /debug/scrape/actions`** (Feedback #7's native input) or **`POST /de
 
 ### Scrape actions array
 
-Supported action types: `wait`, `click`, `write`, `press`, `scroll`, `scrape`, `executeJavascript`, `screenshot`. (`pdf` is rejected at compile time.)
+Supported action types: `wait`, `click`, `write`, `press`, `scroll`, `scrape`, `executeJavascript`, `screenshot`.
 
 See [Successful Runs](#scrape-actions-array-1) below for full example payloads. Quick curl:
 
