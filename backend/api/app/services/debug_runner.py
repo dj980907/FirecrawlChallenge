@@ -101,6 +101,8 @@ def _execute_step(
 
     evaluation = evaluate_interact_response(response)
     payload = interact_payload(response)
+    print("this is the response", response)
+    print("this is the payload", payload)
     duration_ms = int((time.monotonic() - step_started) * 1000)
 
     if evaluation.ok:
@@ -111,7 +113,7 @@ def _execute_step(
                 status=StepStatus.PASSED,
                 duration_ms=duration_ms,
                 output=payload.get("output"),
-                live_view_url=payload.get("liveViewUrl"),
+                live_view_url=payload.get("live_view_url"),
             ),
             failed=False,
         )
@@ -124,7 +126,7 @@ def _execute_step(
             duration_ms=duration_ms,
             error=evaluation.error,
             output=payload.get("output"),
-            live_view_url=payload.get("liveViewUrl"),
+            live_view_url=payload.get("live_view_url"),
         ),
         failed=True,
     )
