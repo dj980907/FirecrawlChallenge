@@ -7,7 +7,7 @@ import os
 from anthropic import AsyncAnthropic
 from pydantic import BaseModel, Field
 
-from app.models.schemas import InteractLanguage, normalize_interact_language
+from app.models.schemas import InteractLanguage
 
 SYSTEM_PROMPTS: dict[InteractLanguage, str] = {
     InteractLanguage.NODE: """You split Playwright JavaScript into separate steps for Firecrawl /interact code mode (Node).
@@ -150,10 +150,9 @@ def _build_result(plan: CodeSplitPlan, *, language: InteractLanguage) -> CodeSpl
 async def split_code_block(
     code_block: str,
     *,
-    language: InteractLanguage | str | None = None,
+    language: InteractLanguage = InteractLanguage.NODE,
 ) -> CodeSplitResult:
     """Use Claude structured output to split a code block for /interact."""
-    resolved = normalize_interact_language(language)
     source = code_block.strip()
     if not source:
         raise CodeSplitError("code_block is empty")
@@ -170,11 +169,11 @@ async def split_code_block(
     response = await client.messages.parse(
         model=_anthropic_model(),
         max_tokens=4096,
-        system=SYSTEM_PROMPTS[resolved],
+        system=SYSTEM_PROMPTS[language],
         messages=[
             {
                 "role": "user",
-                "content": f"{USER_PROMPTS[resolved]}\n\n{source}",
+                "content": f"{USER_PROMPTS[language]}\n\n{source}",
             }
         ],
         output_format=CodeSplitPlan,
@@ -184,4 +183,4 @@ async def split_code_block(
     if plan is None:
         raise CodeSplitError("Claude did not return structured code steps")
 
-    return _build_result(plan, language=resolved)
+    return _build_result(plan, language=language)

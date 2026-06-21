@@ -7,7 +7,7 @@ Usage:
   poetry run python scripts/demo_debug_run.py
 
 Runs two scenarios against example.com:
-  1. Passing sequence (prompt + code)
+  1. Passing sequence (code steps)
   2. Failing sequence (bad selector in code) to show step-level diagnostics
 """
 
@@ -42,7 +42,7 @@ def main() -> int:
     url = "https://example.com"
 
     passing_steps = [
-        DebugStep(prompt="Wait for the page to finish loading"),
+        DebugStep(code="await page.waitForLoadState('networkidle'); true"),
         DebugStep(code="await page.evaluate(() => window.scrollBy(0, 300)); true"),
         DebugStep(code="await page.waitForTimeout(500); true"),
     ]

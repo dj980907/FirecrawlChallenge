@@ -13,7 +13,6 @@ from app.models.schemas import (
     InteractLanguage,
     StepResult,
     StepStatus,
-    normalize_interact_language,
 )
 from app.services.firecrawl_client import get_firecrawl_client
 
@@ -100,18 +99,16 @@ def _interact_response_ok(response: Any) -> tuple[bool, str | None]:
 
 
 def _run_interact(client: Any, scrape_id: str, step: DebugStep) -> Any:
-    if step.prompt:
-        return client.interact(scrape_id, prompt=step.prompt)
     kwargs: dict[str, Any] = {"code": step.code}
     if step.language:
-        kwargs["language"] = step.language
+        kwargs["language"] = step.language.value
     return client.interact(scrape_id, **kwargs)
 
 
 def _resolve_language(steps: list[DebugStep]) -> InteractLanguage:
     for step in steps:
-        if step.code and step.language:
-            return normalize_interact_language(step.language)
+        if step.language:
+            return step.language
     return InteractLanguage.NODE
 
 

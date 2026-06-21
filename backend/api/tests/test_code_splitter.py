@@ -87,7 +87,10 @@ async def test_split_code_block_python(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
     with patch("app.services.code_splitter.AsyncAnthropic", return_value=mock_client):
-        result = await split_code_block("await page.click('#login')\njson.dumps({'ok': True})", language="python")
+        result = await split_code_block(
+            "await page.click('#login')\njson.dumps({'ok': True})",
+            language=InteractLanguage.PYTHON,
+        )
 
     assert result.language == InteractLanguage.PYTHON
     assert result.codes[0].endswith("True")
